@@ -1,0 +1,10 @@
+.env
+*.pth
+*.tar.gz
+__pycache__/
+*.pyc
+.pytest_cache/
+mlruns/
+.DS_Store
+*.egg-info/
+venv/

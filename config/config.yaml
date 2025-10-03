@@ -1,0 +1,22 @@
+aws:
+  region: us-east-1
+  bucket_name: ${BUCKET_NAME}
+  role_arn: ${SAGEMAKER_ROLE}
+
+model:
+  name: model_deteccion_imagenes
+  version: "1.0.0"
+  framework: pytorch
+  framework_version: "1.12.0"
+  py_version: py38
+
+endpoint:
+  name: pytorch-model-endpoint
+  instance_type: ml.r5.large
+  initial_instance_count: 1
+
+inference:
+  image_size: 64
+  labels:
+    - cat
+    - fish
