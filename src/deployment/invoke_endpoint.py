@@ -175,7 +175,7 @@ class EndpointInvoker:
 
 if __name__ == "__main__":
     # Ejemplo de uso
-    invoker = EndpointInvoker()
+    invoker = EndpointInvoker("pytorch-model-endpoint-v1-0-0")
 
     # Opción 1: Desde S3
     result = invoker.predict_from_s3(

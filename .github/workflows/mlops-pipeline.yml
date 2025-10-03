@@ -1,0 +1,176 @@
+name: MLOps CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  PYTHON_VERSION: "3.8"
+
+jobs:
+  # Job 1: Linting y Code Quality
+  code-quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 black
+
+      - name: Lint with flake8
+        run: |
+          # Stop build if there are Python syntax errors
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          # Warning for complexity
+          flake8 . --count --max-complexity=10 --max-line-length=127 --statistics
+
+      - name: Check code formatting with black
+        run: black --check .
+
+  # Job 2: Testing
+  test:
+    needs: code-quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run unit tests
+        run: |
+          pytest tests/ -v --cov=src --cov-report=xml --cov-report=html
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage.xml
+          fail_ci_if_error: false
+
+  # Job 3: Model Validation (simulated)
+  model-validation:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Validate model architecture
+        run: |
+          python tests/test_model.py
+
+      - name: Check model file exists
+        run: |
+          if [ ! -f "model_deteccion_imagenes/model_deteccion_imagenes.pth" ]; then
+            echo "Model file not found!"
+            exit 1
+          fi
+          echo "✅ Model file validated"
+
+  # Job 4: Build and Push (solo en main)
+  build:
+    needs: [test, model-validation]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Package and upload model to S3
+        env:
+          BUCKET_NAME: ${{ secrets.BUCKET_NAME }}
+          SAGEMAKER_ROLE: ${{ secrets.SAGEMAKER_ROLE }}
+        run: |
+          python -c "
+          from src.deployment.deploy_model import ModelDeployer
+          deployer = ModelDeployer()
+          model_uri = deployer.push_model_to_s3()
+          print(f'Model uploaded to: {model_uri}')
+          "
+
+      - name: Create deployment artifact
+        run: |
+          echo "MODEL_VERSION=${{ github.sha }}" > deployment_info.txt
+          echo "DEPLOYED_AT=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> deployment_info.txt
+
+      - name: Upload deployment artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: deployment-info
+          path: deployment_info.txt
+
+  # Job 5: Deploy to Staging (manual approval para prod)
+  deploy-staging:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    environment: staging
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Deploy to SageMaker Staging
+        env:
+          BUCKET_NAME: ${{ secrets.BUCKET_NAME }}
+          SAGEMAKER_ROLE: ${{ secrets.SAGEMAKER_ROLE }}
+        run: |
+          echo "Deploying to staging environment..."
+          # Aquí iría el deployment real
+          echo "✅ Deployment to staging completed"

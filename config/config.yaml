@@ -11,7 +11,7 @@ model:
   py_version: py38
 
 endpoint:
-  name: pytorch-model-endpoint
+  name: pytorch-model-endpoint-v1-0-0
   instance_type: ml.r5.large
   initial_instance_count: 1
 
