@@ -1,0 +1,57 @@
+name: Deploy Model to SageMaker
+
+on:
+  workflow_dispatch: # Manual trigger
+    inputs:
+      model_s3_uri:
+        description: "S3 URI of model artifacts"
+        required: true
+      endpoint_action:
+        description: "Endpoint action (create/update/delete)"
+        required: true
+        default: "update"
+  workflow_run:
+    workflows: ["Train Model on SageMaker"]
+    types:
+      - completed
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.8"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Run tests
+        run: |
+          pytest tests/ -v --tb=short
+
+      - name: Deploy model
+        env:
+          BUCKET_NAME: ${{ secrets.BUCKET_NAME }}
+          SAGEMAKER_ROLE: ${{ secrets.SAGEMAKER_ROLE }}
+        run: |
+          python src/deployment/deploy_model.py --update
+
+      - name: Health check
+        run: |
+          python src/monitoring/monitor_endpoint.py

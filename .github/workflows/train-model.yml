@@ -1,0 +1,57 @@
+name: Train Model on SageMaker
+
+on:
+  workflow_dispatch: # Manual trigger
+    inputs:
+      epochs:
+        description: "Number of epochs"
+        required: false
+        default: "10"
+      batch_size:
+        description: "Batch size"
+        required: false
+        default: "32"
+  push:
+    branches:
+      - main
+    paths:
+      - "src/training/**"
+      - "config/training_config.yaml"
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.8"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Launch SageMaker Training Job
+        env:
+          BUCKET_NAME: ${{ secrets.BUCKET_NAME }}
+          SAGEMAKER_ROLE: ${{ secrets.SAGEMAKER_ROLE }}
+        run: |
+          python src/training/launch_training.py
+
+      - name: Upload training artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: training-info
+          path: training_job_*.json
